@@ -7,46 +7,54 @@ import utils as ut
 
 import tensorflow as tf
 
-__all__ = ['WiderTrain',
+__all__ = ['read_anno',
+           'WiderTrain',
+           'WiderTrainTfrecord',
            'WiderEval',
            'save_wider_result']
 
+def read_anno(path, min_size, has_label=False):
+    # annotation: float [ymin, xmin, ymax, xmax]
+    annotation = dict()
+    k = ''
+    for line in open(path).readlines():
+        line = line.rstrip()
+        line_split = line.split()
+        if re.match('.*.jpg', line):
+            k = line
+            annotation[k] = {'boxes':[], 'labels':[]}
+            continue
+        elif len(line_split) >= 4:
+            box = np.array([float(x) for x in line_split])
+            box = box[[1, 0, 3, 2]]
+            if has_label:
+                label = int(line_split[-1])
+            else:
+                label = 1
+            # box must larger le min_size
+            box[2] = abs(box[2])
+            box[3] = abs(box[3])
+            mask = np.sqrt(box[2] * box[3]) > min_size
+            if mask:
+                box[[2, 3]] = box[[0, 1]] + box[[2, 3]]
+                annotation[k]['boxes'].append(box.tolist())
+                annotation[k]['labels'].append(label)
+    for k in list(annotation.keys()):
+        if len(annotation[k]['boxes']) == 0:
+            del annotation[k]
+        else:
+            annotation[k]['boxes'] = np.array(annotation[k]['boxes'])
+            annotation[k]['labels'] = np.array(annotation[k]['labels'])
+    return annotation
+
 class WiderTrain():
-    def __init__(self, img_dir, anno_path, min_size=0):
+    def __init__(self, img_dir, anno_path, min_size=0, has_label=False):
         self.imgs_dir = img_dir
-        self.anno_dict = self._read_anno(anno_path, min_size)
+        self.anno_dict = read_anno(anno_path, min_size, has_label)
         self.anno_keys = list(self.anno_dict.keys()) # the fname
         self.anno_values = list(self.anno_dict.values()) # it is the float box
         self.imgs_list = [] # list of io.BytesIO object
         self.loaded = False
-
-    def _read_anno(self, path, min_size):
-        # annotation: float [ymin, xmin, ymax, xmax]
-        annotation = dict()
-        k = ''
-        for line in open(path).readlines():
-            line = line.rstrip()
-            if re.match('.*.jpg', line):
-                k = line
-                annotation[k] = []
-                continue
-            elif len(line.split()) >= 4:
-                box = np.array([float(x) for x in line.split()])
-                box = box[[1, 0, 3, 2]]
-                #box must larger le min_size
-                box[2] = abs(box[2])
-                box[3] = abs(box[3])
-                mask = np.sqrt(box[2]*box[3]) > min_size
-                if mask:
-                    box[[2, 3]] = box[[0, 1]] + box[[2, 3]]
-                    annotation[k].append(box.tolist())
-        for k in list(annotation.keys()):
-            if len(annotation[k]) == 0:
-                del annotation[k]
-            else:
-                boxes = np.stack(annotation[k])
-                annotation[k] = boxes
-        return annotation
 
     def __len__(self):
         return len(self.anno_dict)
@@ -188,13 +196,13 @@ def save_wider_result(output_dir, fnames, results):
         fid.write(os.path.basename(fname) + '\n')
         if bboxes is None:
             fid.write(str(1) + '\n')
-            fid.write('%f %f %f %f %f\n' % (0, 0, 0, 0, 0))
+            fid.write('%.1f %.1f %.1f %.1f %.1f\n' % (0, 0, 0, 0, 0))
             continue
         else:
             fid.write(str(len(bboxes)) + '\n')
             for _i in range(len(scores)):
                 s, b =scores[_i], bboxes[_i]
-                fid.write('%.6f %.6f %.6f %.6f %.6f\n' % (b[1], b[0], b[3] - b[1], b[2] - b[0], s))
+                fid.write('%.1f %.1f %.1f %.1f %.8f\n' % (b[1], b[0], b[3] - b[1], b[2] - b[0], s))
 
             fid.close()
             if i % 10 == 0 and i:

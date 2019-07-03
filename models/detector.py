@@ -142,15 +142,21 @@ class Detector:
         init_scale = self.eval_params['init_scale']
         pyramid_scale = self.eval_params['pyramid_scale']
         max_output_size = self.eval_params['max_output_size']
+        enable_flip = self.eval_params['enable_flip']
         batch_size = images.shape[0]
 
-        boxes, scores = self._predict_fn(images, match_thres, init_scale, pyramid_scale, max_output_size, batch_size)
-        flipped_images = tf.image.flip_left_right(images)
-        flipped_boxes, flipped_scores = self._predict_fn(flipped_images, match_thres, init_scale, pyramid_scale, max_output_size, batch_size)
-        flipped_boxes = ut.tf_ops.flip_boxes(flipped_boxes)
 
-        bboxes_all = tf.concat([boxes, flipped_boxes], axis=1)
-        scores_all = tf.concat([scores, flipped_scores], axis=1)
+        boxes, scores = self._predict_fn(images, match_thres, init_scale, pyramid_scale, max_output_size, batch_size)
+        if enable_flip:
+            flipped_images = tf.image.flip_left_right(images)
+            flipped_boxes, flipped_scores = self._predict_fn(flipped_images, match_thres, init_scale, pyramid_scale, max_output_size, batch_size)
+            flipped_boxes = ut.tf_ops.flip_boxes(flipped_boxes)
+
+            bboxes_all = tf.concat([boxes, flipped_boxes], axis=1)
+            scores_all = tf.concat([scores, flipped_scores], axis=1)
+        else:
+            bboxes_all = boxes
+            scores_all = scores
         nms_boxes, nms_scores = ut.tf_ops.nms_batch(bboxes_all, scores_all,
                                                     max_output_size=max_output_size,
                                                     nms_thres=0.4,
@@ -222,7 +228,86 @@ class Detector:
                                                     score_thres=match_thres)
         return nms_boxes, nms_scores
 
-    def model_predict_fn_bak(self, mode, features):
+    def _predict_fn_fix_size(self, images, match_thres, init_scale, pyramid_scale, max_output_size, batch_size):
+        im_arr = ut.tf_ops.image_pyramid(images, scale=pyramid_scale, min_len=32, divisible=8,
+                                         init_scale=float(init_scale))
+        fem1_arr = tf.TensorArray(tf.float32, size=0, dynamic_size=True, element_shape=[batch_size, None, None, 64],
+                                  clear_after_read=False, infer_shape=False)
+        fem2_arr = tf.TensorArray(tf.float32, size=0, dynamic_size=True, element_shape=[batch_size, None, None, 64],
+                                  clear_after_read=False, infer_shape=False)
+
+        def get_fems(i, fem1_arr, fem2_arr, im_arr=im_arr):
+            im = im_arr.read(i)
+            fem_a, fem_b = self.net.fem(im, is_training=False)
+            fem1_arr = fem1_arr.write(i, fem_a)
+            fem2_arr = fem2_arr.write(i, fem_b)
+            return i + 1, fem1_arr, fem2_arr
+
+        i, fem1_arr, fem2_arr = tf.while_loop(loop_vars=[0, fem1_arr, fem2_arr],
+                                              cond=lambda i, _1, _2: i < im_arr.size(),
+                                              body=get_fems,
+                                              parallel_iterations=8,
+                                              back_prop=False)
+
+        def body(i, boxes_all, scores_all, im_arr=im_arr):
+            im = im_arr.read(i)
+            anchor0 = SingleAnchor(image_shape=ut.tf_ops.img_shape(im),
+                                   anchor_scale=16,
+                                   anchor_stride=8)
+            anchor1 = SingleAnchor(image_shape=ut.tf_ops.img_shape(im),
+                                   anchor_scale=32,
+                                   anchor_stride=8)
+
+            def first_level():
+                fem1 = fem1_arr.read(i)
+                fem2 = fem2_arr.read(i + 1)
+                fem2 = tf.image.resize_bilinear(fem2, size=ut.tf_ops.img_shape(fem1), align_corners=True)
+                feature = tf.concat([fem1, fem2], axis=-1)
+                pred0 = self.net.dem(feature, 0, is_training=False)
+                pred1 = self.net.dem(feature, 1, is_training=False)
+                boxes0, scores0 = anchor0.batch_decode(pred0[2], pred0[1], max_out=max_output_size, thres=match_thres)
+                boxes1, scores1 = anchor1.batch_decode(pred1[2], pred1[1], max_out=max_output_size, thres=match_thres)
+                boxes = tf.concat([boxes0, boxes1], axis=1)
+                scores = tf.concat([scores0, scores1], axis=1)
+                return boxes, scores
+
+            def tail_level():
+                fem1 = fem1_arr.read(i)
+                fem2 = fem2_arr.read(i + 1)
+                feature = tf.concat([fem1, fem2], axis=-1)
+                logit, cls, reg = self.net.dem(feature, 1)
+                boxes, scores = anchor1.batch_decode(reg, cls, max_out=max_output_size, thres=match_thres)
+                return boxes, scores
+
+            boxes, scores = tf.cond(tf.equal(i, 0),
+                                    true_fn=first_level,
+                                    false_fn=tail_level)
+            boxes_float = ut.tf_ops.convert_bboxes_to_float(boxes, ut.tf_ops.img_shape(im))
+            boxes_all = tf.concat([boxes_all, boxes_float], axis=1)
+            scores_all = tf.concat([scores_all, scores], axis=1)
+            return i + 1, boxes_all, scores_all
+
+        i = 0
+        bboxes_all = tf.zeros([batch_size, 0, 4])
+        scores_all = tf.zeros([batch_size, 0])
+        shape_invariant = [tf.TensorShape([]),
+                           tf.TensorShape([batch_size, None, 4]),
+                           tf.TensorShape([batch_size, None])]
+        i, bboxes_all, scores_all = \
+            tf.while_loop(cond=lambda i, _s, _b: i + 1 < im_arr.size(),
+                          loop_vars=[i, bboxes_all, scores_all],
+                          body=body,
+                          parallel_iterations=16,
+                          shape_invariants=shape_invariant,
+                          back_prop=False)
+        nms_boxes, nms_scores = ut.tf_ops.nms_batch(bboxes_all, scores_all,
+                                                    max_output_size=max_output_size,
+                                                    nms_thres=0.4,
+                                                    score_thres=match_thres)
+        nms_boxes = ut.tf_ops.convert_bboxes_to_int(nms_boxes, tf.shape(images)[1:3])
+        return nms_boxes, nms_scores
+
+    def model_predict_fn_fix_size(self, mode, features):
         images = features
         match_thres = self.eval_params['match_thres']
         init_scale = self.eval_params['init_scale']
@@ -230,7 +315,7 @@ class Detector:
         max_output_size = self.eval_params['max_output_size']
         batch_size = images.shape[0]
 
-        im_arr = ut.tf_ops.image_pyramid(images, scale=pyramid_scale, min_len=16, divisible=16, init_scale=float(init_scale))
+        im_arr = ut.tf_ops.image_pyramid(images, scale=pyramid_scale, min_len=32, divisible=16, init_scale=float(init_scale))
         fem1_arr = tf.TensorArray(tf.float32, size=0, dynamic_size=True, element_shape=[batch_size, None, None, 64],
                                   clear_after_read=False, infer_shape=False)
         fem2_arr = tf.TensorArray(tf.float32, size=0, dynamic_size=True, element_shape=[batch_size, None, None, 64],
@@ -271,7 +356,6 @@ class Detector:
             def tail_level():
                 fem1 = fem1_arr.read(i)
                 fem2 = fem2_arr.read(i+1)
-                fem2 = tf.image.resize_bilinear(fem2, size=ut.tf_ops.img_shape(fem1), align_corners=True)
                 feature = tf.concat([fem1, fem2], axis=-1)
                 logit, cls, reg = self.net.dem(feature, 1)
                 boxes, scores = anchor1.batch_decode(reg, cls, max_out=max_output_size, thres=match_thres)

@@ -8,7 +8,9 @@ __all__ = ['convert_bboxes_to_float',
            'resize_bboxes',
            'pad_image',
            'crop_image',
-           'draw_boxes']
+           'draw_boxes',
+           'intersection',
+           'iou']
 
 def convert_bboxes_to_float(bboxes, image_shape):
     '''
@@ -121,3 +123,35 @@ def draw_boxes(img, boxes, color='green', width=3):
     for box in boxes:
         draw.rectangle([box[1], box[0], box[3], box[2]], outline=color, width=width)
     return img
+
+
+def intersection(boxes1, boxes2):
+    """
+    :param boxes1: numpy.ndarray [num, 4], each column is ymin, xmin, ymax, xmax
+    :param boxes2: same as boxes1
+    :return: numpy.ndarray [num1, num2]
+    """
+    assert(boxes1.shape[1]==4 and boxes2.shape[1]==4)
+    ymin1, xmin1, ymax1, xmax1 = np.split(boxes1, 4, axis=1)
+    ymin2, xmin2, ymax2, xmax2 = np.split(boxes2, 4, axis=1)
+    all_pairs_min_ymax = np.minimum(ymax1, ymax2.reshape(-1))
+    all_pairs_max_ymin = np.maximum(ymin1, ymin2.reshape(-1))
+    intersect_heights = np.maximum(0.0, all_pairs_min_ymax - all_pairs_max_ymin)
+    all_pairs_min_xmax = np.minimum(xmax1, xmax2.reshape(-1))
+    all_pairs_max_xmin = np.maximum(xmin1, xmin2.reshape(-1))
+    intersect_widths = np.maximum(0.0, all_pairs_min_xmax - all_pairs_max_xmin)
+    return intersect_heights * intersect_widths
+
+
+def iou(boxes1, boxes2):
+    """
+    :param boxes1: numpy.ndarray [num, 4], each column is ymin, xmin, ymax, xmax
+    :param boxes2: same as boxes1
+    :return: numpy.ndarray [num1, num2]
+    """
+    intersections = intersection(boxes1, boxes2)
+    areas1 = (boxes1[:,2]-boxes1[:,0]) * (boxes1[:,3]-boxes1[:,1])
+    areas2 = (boxes2[:,2]-boxes2[:,0]) * (boxes2[:,3]-boxes2[:,1])
+    unions = areas1.reshape([-1, 1]) + areas2.reshape([1, -1]) - intersections
+    ious = intersections / unions
+    return ious

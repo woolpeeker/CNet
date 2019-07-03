@@ -108,18 +108,19 @@ class PyramidFusedNet:
         size = tf.to_int32(tf.shape(inputs)[1:3] / 2)
         _, fem2 = self.fem(tf.image.resize_bilinear(inputs, size, True), is_training=True)
         feature = tf.concat([fem1, fem2], axis=-1)
-        logit0, cls0, reg0 = self.dem(feature, anchor_num=0, is_training=True)
-        logit1, cls1, reg1 = self.dem(feature, anchor_num=1, is_training=True)
-        logit_list = [logit0, logit1]
-        cls_list = [cls0, cls1]
-        reg_list = [reg0, reg1]
+        logit_list, cls_list, reg_list = [], [], []
+        for i in range(self.num_anchors):
+            logit, cls, reg = self.dem(feature, anchor_num=i, is_training=True)
+            logit_list.append(logit)
+            cls_list.append(cls)
+            reg_list.append(reg)
         return logit_list, cls_list, reg_list
 
     def fem(self, inputs, is_training=False):
         arg_scope = self.get_arg_scopes(is_training)
         with tf.variable_scope(self.scope, reuse=tf.AUTO_REUSE):
             with ut.tf_ops.set_arg_scope(arg_scope):
-                # FEM
+                # FEM32
                 net = slim.separable_conv2d(inputs, num_outputs=32, stride=2, depth_multiplier=32, scope='fem_conv0')
                 net = slim.separable_conv2d(net, num_outputs=64, stride=1, scope='fem_conv1')
                 net = slim.separable_conv2d(net, num_outputs=64, stride=2, scope='fem_conv2')

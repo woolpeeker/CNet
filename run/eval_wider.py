@@ -13,14 +13,16 @@ cfg_path = 'base.json'
 cfg = json.load(open(cfg_path))
 
 
-ckpt_dir = 'checkpoints/fused16_32'
+ckpt_dir = 'checkpoints/fused16_32_mining'
 anchor_scales = [16, 32]
 anchor_strides = [8, 8]
 
 eval_params = {'match_thres': 0.01,
                'init_scale': 1.,
                'pyramid_scale': 0.5,
-               'max_output_size': 400}
+               'max_output_size': 400,
+               'enable_flip': True,
+               'fix_size': False}
 
 imgs_dir = cfg[wider_type]['image_dir']
 anno_mat = cfg[wider_type]['mat_path']

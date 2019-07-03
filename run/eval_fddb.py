@@ -5,7 +5,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import numpy as np
 import time
 
-from models.detector import Detector, RefineDetector
+from models.detector import Detector
 
 fddb_imgs_file = '/home/luojiapeng/datasets/fddb/imgList.txt'
 fddb_base_dir = '/home/luojiapeng/datasets/fddb'
@@ -14,14 +14,15 @@ cfg_path = 'base.json'
 cfg = json.load(open(cfg_path))
 
 
-ckpt_dir = 'checkpoints/fused16_32'
-anchor_scales = [16]
-anchor_strides = [8]
+ckpt_dir = 'checkpoints/fused16_32_mining'
+anchor_scales = [16, 32]
+anchor_strides = [8, 8]
 
 eval_params = {'match_thres': 0.01,
-               'init_scale': 1.,
+               'init_scale': 1,
                'pyramid_scale': 0.5,
-               'max_output_size': 400}
+               'max_output_size': 400,
+               'enable_flip': True}
 
 def get_fddb_imgs():
     anno_file = open(fddb_imgs_file, 'r')

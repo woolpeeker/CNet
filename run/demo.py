@@ -1,25 +1,28 @@
-import os
-os.environ['CUDA_VISIBLE_DEVICES']='0'
-
-import os, re, time
-from PIL import Image, ImageDraw
-
 import tensorflow as tf
-import numpy as np
+import os, json
+from PIL import Image
+import utils as ut
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
-img_dir='imgs/'
-out_dir='outputs/'
-if not os.path.exists(out_dir):
-    os.makedirs(out_dir)
+from models.detector import Detector
 
-from nets.cascadeOut import CascadeOut
-net = CascadeOut()
+cfg_path = 'base.json'
+cfg = json.load(open(cfg_path))
 
-model_dir = 'checkpoints/tinyNet_s8'
-params = {'thres': 0.4,
-          'init_scale': 1.,
-          'max_output_size': 800,
-          'iou_thres': 0.2}
+img_dir = 'imgs'
+out_dir = 'output'
+ckpt_dir = 'checkpoints/fused16_32_mining'
+anchor_scales = [16, 32]
+anchor_strides = [8, 8]
+
+eval_params = {'match_thres': 0.8,
+               'init_scale': 1.,
+               'pyramid_scale': 0.5,
+               'max_output_size': 800,
+               'enable_flip': True,
+               'fix_size': False}
+
+os.makedirs(out_dir, exist_ok=True)
 
 def get_imgs():
     fnames = []
@@ -35,8 +38,9 @@ def get_dataset():
         raw_img = tf.read_file(fname)
         image = tf.image.decode_jpeg(raw_img, channels=3)
         image = tf.cast(image, tf.float32)
-        return {'fname': fname, 'image': image}
+        return image
     dataset = dataset.map(fn, num_parallel_calls=8)
+    dataset = dataset.batch(1, drop_remainder=True)
     dataset.prefetch(None)
     return dataset
 
@@ -47,22 +51,21 @@ def save_result(fnames, result):
         out_fname = os.path.split(fname)[-1]
         out_fname = os.path.join(out_dir, out_fname)
         res = next(result)
-        bboxes, scores = res['bboxes'], res['scores']
+        boxes, scores = res['bboxes'], res['scores']
+        boxes = boxes[0]
+        scores = scores[0]
         im = Image.open(fname)
-        imDraw = ImageDraw.Draw(im)
-        for _i in range(len(scores)):
-            s, b =scores[_i], bboxes[_i]
-            b=[int(np.round(x)) for x in b]
-            imDraw.rectangle([b[1], b[0], b[3], b[2]], outline='yellow', width=1)
-        print('output: {}\t{}'.format(out_fname, len(bboxes)))
+        im = ut.np_ops.draw_boxes(im, boxes, width=2)
+        print('output: {}\t{}'.format(out_fname, len(boxes)))
         im.save(out_fname)
 
 def detect():
-    runConfig = tf.estimator.RunConfig(model_dir=model_dir)
-    classifier = tf.estimator.Estimator(model_fn=net.model_fn,
-                                        params=params,
-                                        config=runConfig)
-    results = classifier.predict(get_dataset)
+    detector = Detector(anchor_scales=anchor_scales,
+                        anchor_strides=anchor_strides,
+                        eval_params=eval_params)
+    classifier = tf.estimator.Estimator(model_fn=detector.model_fn,
+                                        model_dir=ckpt_dir)
+    results = classifier.predict(get_dataset, yield_single_examples=False)
     fnames = get_imgs()
     save_result(fnames, results)
 

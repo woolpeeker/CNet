@@ -8,7 +8,7 @@ import random
 
 __all__ = ['select_crop_face']
 
-def select_crop_face(img, boxes, out_shape, sel_box_idx, to_size):
+def select_crop_face(img, boxes, labels, out_shape, sel_box_idx, to_size):
     '''random crop the image, the output image must contain the selected box,
     and resize the image to make the box to_size. crop fisrtly, resize second.
     :param im: PIL.Image
@@ -44,7 +44,8 @@ def select_crop_face(img, boxes, out_shape, sel_box_idx, to_size):
     cropped_img, cropped_boxes = ut.np_ops.crop_image(resized_img, [dst_y, dst_x, dst_y+dst_h, dst_x+dst_w], resized_boxes)
     mask = ut.np_ops.bboxes_filter_center(cropped_boxes, (dst_h, dst_w))
     cropped_boxes = cropped_boxes[mask]
+    cropped_labels = labels[mask]
     if len(cropped_boxes)==0:
         cropped_boxes = np.zeros([1,4])
-    return cropped_img, cropped_boxes
-
+        cropped_labels = np.zeros([1])
+    return cropped_img, cropped_boxes, cropped_labels

@@ -8,11 +8,11 @@ from datasets.widerface import WiderTrainTfrecord
 from models.detector import Detector
 import utils as ut
 
-tfrecord_path = 'datasets/wider_train_cropped320_scaleTo16.32_repeat100.tfrecord'
+tfrecord_path = 'datasets/dsfd_wider_train_cropped320_scaleTo16_repeat100.tfrecord'
 cfg_path = 'base.json'
-ckpt_dir = 'checkpoints/fused16_32'
-anchor_scales = [16, 32]
-anchor_strides = [8, 8]
+ckpt_dir = 'checkpoints/fused16_mining'
+anchor_scales = [16]
+anchor_strides = [8]
 
 def train():
     cfg = json.load(open(cfg_path))
