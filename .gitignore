@@ -1,0 +1,10 @@
+<<<<<<< HEAD
+**/.ipynb_checkpoints/
+**/__pycache__/
+checkpoints/*
+=======
+**/ipynb_checkpoints/
+**/__pycache__/
+
+>>>>>>> 3ef3d2b... image_pyramid_fusion + sample_filter
+**/*.tfrecord
