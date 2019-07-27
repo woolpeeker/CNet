@@ -183,18 +183,19 @@ class SingleAnchor:
         :param thres: threshold
         :return: [batchsize, *, 4]
         """
-        anchor = self.anchor
-        code_rank_assert = tf.assert_equal(tf.rank(batch_code), 4)
-        score_rank_assert = tf.assert_equal(tf.rank(batch_score), 3)
-        with tf.control_dependencies([code_rank_assert, score_rank_assert]):
-            c_shape = batch_code.shape
-            s_shape = batch_score.shape
-            batch_code = tf.reshape(batch_code, [c_shape[0], -1, c_shape[3]])
-            batch_score = tf.reshape(batch_score, [s_shape[0], -1])
-            batch_boxes = bcoder.batch_decode(batch_code, self._box_coder, anchor)
-            batch_boxes, batch_scores = tf_ops.nms_batch(batch_boxes, batch_score,
-                                                         max_output_size=max_out, nms_thres=0.4,
-                                                         score_thres=thres, pad=True)
+        with tf.name_scope('batch_decode'):
+            anchor = self.anchor
+            code_rank_assert = tf.assert_equal(tf.rank(batch_code), 4)
+            score_rank_assert = tf.assert_equal(tf.rank(batch_score), 3)
+            with tf.control_dependencies([code_rank_assert, score_rank_assert]):
+                c_shape = batch_code.shape
+                s_shape = batch_score.shape
+                batch_code = tf.reshape(batch_code, [c_shape[0], -1, c_shape[3]])
+                batch_score = tf.reshape(batch_score, [s_shape[0], -1])
+                batch_boxes = bcoder.batch_decode(batch_code, self._box_coder, anchor)
+                batch_boxes, batch_scores = tf_ops.nms_batch(batch_boxes, batch_score,
+                                                            max_output_size=max_out, nms_thres=0.4,
+                                                            score_thres=thres, pad=True)
         return batch_boxes, batch_scores
 
 

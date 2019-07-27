@@ -219,7 +219,7 @@ class Detector:
             tf.while_loop(cond=lambda i, _s, _b: i + 1 < im_arr.size(),
                           loop_vars=[i, bboxes_all, scores_all],
                           body=body,
-                          parallel_iterations=16,
+                          parallel_iterations=8,
                           shape_invariants=shape_invariant,
                           back_prop=False)
         nms_boxes, nms_scores = ut.tf_ops.nms_batch(bboxes_all, scores_all,

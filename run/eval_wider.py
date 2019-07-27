@@ -13,11 +13,11 @@ cfg_path = 'base.json'
 cfg = json.load(open(cfg_path))
 
 
-ckpt_dir = 'checkpoints/fused16_32_mining'
+ckpt_dir = 'checkpoints/dev'
 anchor_scales = [16, 32]
 anchor_strides = [8, 8]
 
-eval_params = {'match_thres': 0.01,
+eval_params = {'match_thres': 0.001,
                'init_scale': 1.,
                'pyramid_scale': 0.5,
                'max_output_size': 400,
