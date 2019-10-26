@@ -1,0 +1,18 @@
+{
+    "wider_train": {
+        "image_dir": "/home/luojiapeng/datasets/widerface/WIDER_train/images",
+        "txt_path": "/home/luojiapeng/datasets/widerface/wider_face_split/wider_face_train_bbx_gt.txt",
+        "min_face_size": 6
+    },
+    "wider_val": {
+        "image_dir": "/home/luojiapeng/datasets/widerface/WIDER_val/images",
+        "mat_path": "/home/luojiapeng/datasets/widerface/wider_face_split/wider_face_val.mat"
+    },
+    "wider_test": {
+        "image_dir": "/home/luojiapeng/datasets/widerface/WIDER_test/images",
+        "mat_path": "/home/luojiapeng/datasets/widerface/wider_face_split/wider_face_test.mat"
+    },
+    "dsfd":{
+        "txt_path": "/home/luojiapeng/project/CNet/datasets/dsfd_wider_face_train_bbx_gt.txt"
+    }
+}
